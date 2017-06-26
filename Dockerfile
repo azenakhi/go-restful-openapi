@@ -1,4 +1,7 @@
 FROM scratch
-ADD go-restful-swagger-linux-amd64 /app
+ARG GOOS
+ARG GOARCH
+ARG BINARY
+ADD ${BINARY}-${GOOS}-${GOARCH} /app
 CMD ["/app"]
 EXPOSE 8080
