@@ -24,6 +24,6 @@ func main() {
 
 ### Test
 ```
-$ go install github.com/azenakhi/go-restful-swagger/...
-$ go-restful-swagger
+$ go install github.com/azenakhi/go-restful-openapi/...
+$ go-restful-openapi
 ```

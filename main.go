@@ -3,77 +3,73 @@ package main
 import (
 	"log"
 	"net/http"
-	"strconv"
 
 	assetfs "github.com/elazarl/go-bindata-assetfs"
 	"github.com/emicklei/go-restful"
-	"github.com/emicklei/go-restful-swagger12"
+	restfulspec "github.com/emicklei/go-restful-openapi"
+	"github.com/go-openapi/spec"
 )
-
-// This example show a complete (GET,PUT,POST,DELETE) conventional example of
-// a REST Resource including documentation to be served by e.g. a Swagger UI
-// It is recommended to create a Resource struct (UserResource) that can encapsulate
-// an object that provide domain access (a DAO)
-// It has a Register method including the complete Route mapping to methods together
-// with all the appropriate documentation
-//
-// POST http://localhost:8080/users
-// <User><Id>1</Id><Name>Melissa Raspberry</Name></User>
-//
-// GET http://localhost:8080/users/1
-//
-// PUT http://localhost:8080/users/1
-// <User><Id>1</Id><Name>Melissa</Name></User>
-//
-// DELETE http://localhost:8080/users/1
-//
-
-type User struct {
-	Id, Name string
-}
 
 type UserResource struct {
 	// normally one would use DAO (data access object)
 	users map[string]User
 }
 
-func (u UserResource) Register(container *restful.Container) {
+func (u UserResource) WebService() *restful.WebService {
 	ws := new(restful.WebService)
 	ws.
 		Path("/users").
-		Doc("Manage Users hello ").
 		Consumes(restful.MIME_XML, restful.MIME_JSON).
 		Produces(restful.MIME_JSON, restful.MIME_XML) // you can specify this per route as well
+
+	tags := []string{"users"}
+
+	ws.Route(ws.GET("/").To(u.findAllUsers).
+		// docs
+		Doc("get all users").
+		Metadata(restfulspec.KeyOpenAPITags, tags).
+		Writes([]User{}).
+		Returns(200, "OK", []User{}))
 
 	ws.Route(ws.GET("/{user-id}").To(u.findUser).
 		// docs
 		Doc("get a user").
-		Operation("findUser").
 		Param(ws.PathParameter("user-id", "identifier of the user").DataType("string")).
-		Writes(User{})) // on the response
+		Metadata(restfulspec.KeyOpenAPITags, tags).
+		Writes(User{}). // on the response
+		Returns(200, "OK", User{}).
+		Returns(404, "Not Found", nil))
 
 	ws.Route(ws.PUT("/{user-id}").To(u.updateUser).
 		// docs
 		Doc("update a user").
-		Operation("updateUser").
 		Param(ws.PathParameter("user-id", "identifier of the user").DataType("string")).
-		ReturnsError(409, "duplicate user-id", nil).
+		Metadata(restfulspec.KeyOpenAPITags, tags).
 		Reads(User{})) // from the request
 
-	ws.Route(ws.POST("").To(u.createUser).
+	ws.Route(ws.PUT("").To(u.createUser).
 		// docs
 		Doc("create a user").
-		Operation("createUser").
+		Metadata(restfulspec.KeyOpenAPITags, tags).
 		Reads(User{})) // from the request
 
 	ws.Route(ws.DELETE("/{user-id}").To(u.removeUser).
 		// docs
 		Doc("delete a user").
-		Operation("removeUser").
+		Metadata(restfulspec.KeyOpenAPITags, tags).
 		Param(ws.PathParameter("user-id", "identifier of the user").DataType("string")))
 
-	container.Add(ws)
+	return ws
+}
 
+// GET http://localhost:8080/users
+//
+func (u UserResource) findAllUsers(request *restful.Request, response *restful.Response) {
+	list := []User{}
+	for _, each := range u.users {
+		list = append(list, each)
+	}
+	response.WriteEntity(list)
 }
 
 // GET http://localhost:8080/users/1
@@ -81,28 +77,11 @@ func (u UserResource) Register(container *restful.Container) {
 func (u UserResource) findUser(request *restful.Request, response *restful.Response) {
 	id := request.PathParameter("user-id")
 	usr := u.users[id]
-	if len(usr.Id) == 0 {
-		response.AddHeader("Content-Type", "text/plain")
-		response.WriteErrorString(http.StatusNotFound, "404: User could not be found.")
-		return
+	if len(usr.ID) == 0 {
+		response.WriteErrorString(http.StatusNotFound, "User could not be found.")
+	} else {
+		response.WriteEntity(usr)
 	}
-	response.WriteEntity(usr)
-}
-
-// POST http://localhost:8080/users
-// <User><Name>Melissa</Name></User>
-//
-func (u *UserResource) createUser(request *restful.Request, response *restful.Response) {
-	usr := new(User)
-	err := request.ReadEntity(usr)
-	if err != nil {
-		response.AddHeader("Content-Type", "text/plain")
-		response.WriteErrorString(http.StatusInternalServerError, err.Error())
-		return
-	}
-	usr.Id = strconv.Itoa(len(u.users) + 1) // simple id generation
-	u.users[usr.Id] = *usr
-	response.WriteHeaderAndEntity(http.StatusCreated, usr)
 }
 
 // PUT http://localhost:8080/users/1
@@ -111,13 +90,26 @@ func (u *UserResource) createUser(request *restful.Request, response *restful.Re
 func (u *UserResource) updateUser(request *restful.Request, response *restful.Response) {
 	usr := new(User)
 	err := request.ReadEntity(&usr)
-	if err != nil {
-		response.AddHeader("Content-Type", "text/plain")
-		response.WriteErrorString(http.StatusInternalServerError, err.Error())
-		return
+	if err == nil {
+		u.users[usr.ID] = *usr
+		response.WriteEntity(usr)
+	} else {
+		response.WriteError(http.StatusInternalServerError, err)
 	}
-	u.users[usr.Id] = *usr
-	response.WriteEntity(usr)
+}
+
+// PUT http://localhost:8080/users/1
+// <User><Id>1</Id><Name>Melissa</Name></User>
+//
+func (u *UserResource) createUser(request *restful.Request, response *restful.Response) {
+	usr := User{ID: request.PathParameter("user-id")}
+	err := request.ReadEntity(&usr)
+	if err == nil {
+		u.users[usr.ID] = usr
+		response.WriteHeaderAndEntity(http.StatusCreated, usr)
+	} else {
+		response.WriteError(http.StatusInternalServerError, err)
+	}
 }
 
 // DELETE http://localhost:8080/users/1
@@ -128,29 +120,49 @@ func (u *UserResource) removeUser(request *restful.Request, response *restful.Re
 }
 
 func main() {
-	// to see what happens in the package, uncomment the following
-	//restful.TraceLogger(log.New(os.Stdout, "[restful] ", log.LstdFlags|log.Lshortfile))
-
-	wsContainer := restful.NewContainer()
 	u := UserResource{map[string]User{}}
-	u.Register(wsContainer)
+	restful.DefaultContainer.Add(u.WebService())
+
+	config := restfulspec.Config{
+		WebServices:    restful.RegisteredWebServices(), // you control what services are visible
+		WebServicesURL: "http://localhost:8080",
+		APIPath:        "/apidocs.json",
+		PostBuildSwaggerObjectHandler: enrichSwaggerObject}
+	restful.DefaultContainer.Add(restfulspec.NewOpenAPIService(config))
 
 	// Optionally, you can install the Swagger Service which provides a nice Web UI on your REST API
 	// You need to download the Swagger HTML5 assets and change the FilePath location in the config below.
-	// Open http://localhost:8080/apidocs and enter http://localhost:8080/apidocs.json in the api input field.
+	// Open http://localhost:8080/apidocs/?url=http://localhost:8080/apidocs.json
+	http.Handle("/apidocs/", http.StripPrefix("/apidocs/", http.FileServer(&assetfs.AssetFS{Asset: Asset, AssetDir: AssetDir, Prefix: "swagger-ui"})))
 
-	config := swagger.Config{
-		WebServices:    wsContainer.RegisteredWebServices(), // you control what services are visible
-		WebServicesUrl: "http://localhost:8080",
-		ApiPath:        "/swagger.json",
-
-		// Optionally, specifiy where the UI is located
-		SwaggerPath:   "/apidocs/",
-		StaticHandler: http.StripPrefix("/apidocs/", http.FileServer(&assetfs.AssetFS{Asset: Asset, AssetDir: AssetDir, Prefix: "swagger-ui"})),
-	}
-
-	swagger.RegisterSwaggerService(config, wsContainer)
 	log.Printf("start listening on localhost:8080")
-	server := &http.Server{Addr: ":8080", Handler: wsContainer}
-	log.Fatal(server.ListenAndServe())
+	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+func enrichSwaggerObject(swo *spec.Swagger) {
+	swo.Info = &spec.Info{
+		InfoProps: spec.InfoProps{
+			Title:       "UserService",
+			Description: "Resource for managing Users",
+			Contact: &spec.ContactInfo{
+				Name:  "john",
+				Email: "john@doe.rp",
+				URL:   "http://johndoe.org",
+			},
+			License: &spec.License{
+				Name: "MIT",
+				URL:  "http://mit.org",
+			},
+			Version: "1.0.0",
+		},
+	}
+	swo.Tags = []spec.Tag{spec.Tag{TagProps: spec.TagProps{
+		Name:        "users",
+		Description: "Managing users"}}}
+}
+
+// User is just a sample type
+type User struct {
+	ID   string `json:"id" description:"identifier of the user"`
+	Name string `json:"name" description:"name of the user"`
 }

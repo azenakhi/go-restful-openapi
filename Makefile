@@ -22,6 +22,9 @@ image: binary
 					--build-arg BINARY=$(BINARY) \
 					-t ${IMAGE}:${TAG} . --no-cache
 
+bindata:
+		go-binddata swagger-ui/...
+
 binary: ${GOOS}
 
 linux: 
